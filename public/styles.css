@@ -129,16 +129,19 @@ body {
   border: 1px solid var(--border);
 }
 
-.message.markdown-body {
-  /* Give rendered tables/code room to breathe -- wider than a plain-text bubble. */
-  max-width: min(90ch, 92%);
-  white-space: normal;
-}
-
 .message.assistant {
   align-self: flex-start;
   background: var(--assistant-bubble);
   border: 1px solid var(--border);
+}
+
+/* Rendered replies (tables especially) need real width to avoid needless
+   horizontal scrolling -- let them stretch across the chat column instead
+   of staying capped at a narrow "bubble" width like a one-line reply would. */
+.message.markdown-body {
+  align-self: stretch;
+  max-width: 100%;
+  white-space: normal;
 }
 
 .message.error {
