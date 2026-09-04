@@ -14,6 +14,9 @@
  *   - previousResponseId: the last OpenAI response id, used to chain the
  *     next request for multi-turn memory (see openai-engine.js).
  *   - campaignId: the last campaign/knowledge-base the visitor picked.
+ *   - authenticated: whether this session has entered the shared site
+ *     password (see SITE_PASSWORD in web-server.js). Always true if no
+ *     password is configured.
  *   - lastActive: timestamp (ms), used to expire idle sessions.
  */
 
@@ -26,7 +29,12 @@ const sessions = new Map();
 export function getOrCreateSession(sessionId) {
   let session = sessions.get(sessionId);
   if (!session) {
-    session = { previousResponseId: null, campaignId: null, lastActive: Date.now() };
+    session = {
+      previousResponseId: null,
+      campaignId: null,
+      authenticated: false,
+      lastActive: Date.now(),
+    };
     sessions.set(sessionId, session);
   }
   return session;

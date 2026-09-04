@@ -23,11 +23,17 @@
  *  - Session identity is a random id in an httpOnly cookie; state itself
  *    lives in session-store.js (in-memory -- see that file's header for
  *    why, and how to swap in persistent storage later).
- *
- * This process does not implement login/authentication itself. If you want
- * the site password-gated, the simplest approach is NGINX's auth_basic
- * directive on the reverse proxy (see nginx/proxy02-rpgchat.conf) -- that
- * keeps auth out of application code entirely.
+ *  - If SITE_PASSWORD is set in .env, the site is gated behind a single
+ *    shared password: GET /api/session reports whether the current
+ *    session is logged in, POST /api/login checks a submitted password
+ *    and flips the session to authenticated, and POST /api/logout clears
+ *    it again. /api/campaigns, /api/chat, and /api/reset all require an
+ *    authenticated session once a password is configured. The static
+ *    site itself (public/) is not gated -- there's nothing sensitive in
+ *    the page shell, and the frontend shows its own login screen when
+ *    /api/session says it's needed. Leave SITE_PASSWORD blank to run
+ *    with no password at all (e.g. behind NGINX auth_basic instead, or
+ *    for local testing).
  */
 
 import 'dotenv/config';
@@ -45,6 +51,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const WEB_PORT = Number(process.env.WEB_PORT) || 3001;
 const OPENAI_VECTOR_STORE_ID = process.env.OPENAI_VECTOR_STORE_ID;
+const SITE_PASSWORD = process.env.SITE_PASSWORD || '';
 const SESSION_COOKIE = 'rpgchat_session';
 
 // Cap how many images can be attached to one message, and how large each
@@ -112,14 +119,71 @@ function ensureSessionId(req, res) {
 }
 
 // ---------------------------------------------------------------------------
+// Shared-password auth
+// ---------------------------------------------------------------------------
+
+/**
+ * Constant-time password check. Hashing both sides first means the
+ * comparison buffers are always the same length, so timingSafeEqual
+ * doesn't leak how long the submitted password was (on top of not
+ * leaking *where* it first differed).
+ */
+function verifyPassword(candidate) {
+  if (!SITE_PASSWORD) return false;
+  const a = crypto.createHash('sha256').update(String(candidate || '')).digest();
+  const b = crypto.createHash('sha256').update(SITE_PASSWORD).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+/** Blocks a route unless the session is authenticated -- a no-op if no SITE_PASSWORD is set. */
+function requireAuth(req, res, next) {
+  if (!SITE_PASSWORD) return next();
+  const sessionId = ensureSessionId(req, res);
+  const session = getOrCreateSession(sessionId);
+  if (!session.authenticated) {
+    return res.status(401).json({ error: 'Not logged in.' });
+  }
+  next();
+}
+
+// ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 
-app.get('/api/campaigns', (req, res) => {
+app.get('/api/session', (req, res) => {
+  if (!SITE_PASSWORD) return res.json({ authenticated: true, passwordRequired: false });
+  const sessionId = ensureSessionId(req, res);
+  const session = getOrCreateSession(sessionId);
+  res.json({ authenticated: !!session.authenticated, passwordRequired: true });
+});
+
+app.post('/api/login', (req, res) => {
+  const sessionId = ensureSessionId(req, res);
+  const { password } = req.body || {};
+
+  if (verifyPassword(password)) {
+    updateSession(sessionId, { authenticated: true });
+    return res.json({ ok: true });
+  }
+
+  // A small fixed delay adds a little friction against rapid-fire guessing
+  // without any real rate-limiting infrastructure.
+  setTimeout(() => {
+    res.status(401).json({ error: 'Incorrect password.' });
+  }, 500);
+});
+
+app.post('/api/logout', (req, res) => {
+  const sessionId = ensureSessionId(req, res);
+  updateSession(sessionId, { authenticated: false });
+  res.json({ ok: true });
+});
+
+app.get('/api/campaigns', requireAuth, (req, res) => {
   res.json({ campaigns: listCampaigns() });
 });
 
-app.post('/api/chat', upload.array('images', MAX_IMAGES_PER_MESSAGE), async (req, res) => {
+app.post('/api/chat', requireAuth, upload.array('images', MAX_IMAGES_PER_MESSAGE), async (req, res) => {
   try {
     const sessionId = ensureSessionId(req, res);
     const session = getOrCreateSession(sessionId);
@@ -167,7 +231,7 @@ app.post('/api/chat', upload.array('images', MAX_IMAGES_PER_MESSAGE), async (req
   }
 });
 
-app.post('/api/reset', (req, res) => {
+app.post('/api/reset', requireAuth, (req, res) => {
   const sessionId = ensureSessionId(req, res);
   resetSession(sessionId);
   res.json({ ok: true });
@@ -188,6 +252,11 @@ app.listen(WEB_PORT, () => {
   console.log(`Campaigns available: ${campaigns.map((c) => c.label).join(', ')}`);
   if (!OPENAI_VECTOR_STORE_ID) {
     console.log('No default vector store set — "General" gets plain ChatGPT responses.');
+  }
+  if (!SITE_PASSWORD) {
+    console.log('No SITE_PASSWORD set — the web chat is open to anyone who can reach it.');
+  } else {
+    console.log('SITE_PASSWORD is set — visitors must log in before chatting.');
   }
 });
 

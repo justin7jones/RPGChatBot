@@ -4,19 +4,40 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RPG Chat</title>
+  <link rel="icon" type="image/png" href="/assets/favicon-32.png" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="app">
+  <div id="login-screen" class="login-screen" hidden>
+    <form id="login-form" class="login-card">
+      <div class="brand brand-centered">
+        <img class="brand-icon" src="/assets/logo.png" alt="" width="40" height="40" />
+        <span class="brand-name">RPG Chat</span>
+      </div>
+      <p class="login-subtitle">Enter the password to continue.</p>
+      <input
+        id="login-password"
+        type="password"
+        placeholder="Password"
+        autocomplete="current-password"
+        autofocus
+      />
+      <button type="submit" class="send-button login-submit">Enter</button>
+      <div id="login-error" class="login-error" hidden></div>
+    </form>
+  </div>
+
+  <div class="app" id="app-shell" hidden>
     <header class="topbar">
       <div class="brand">
-        <span class="brand-mark">&#9876;</span>
+        <img class="brand-icon" src="/assets/logo.png" alt="RPG Chat" width="32" height="32" />
         <span class="brand-name">RPG Chat</span>
       </div>
       <div class="controls">
         <label class="campaign-label" for="campaign-select">Campaign</label>
         <select id="campaign-select" aria-label="Campaign"></select>
         <button id="reset-button" type="button" title="Start a new conversation">New conversation</button>
+        <button id="logout-button" type="button" title="Log out" hidden>Log out</button>
       </div>
     </header>
 

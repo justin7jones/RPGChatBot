@@ -55,8 +55,10 @@ body {
   letter-spacing: 0.02em;
 }
 
-.brand-mark {
-  color: var(--accent);
+.brand-icon {
+  display: block;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .controls {
@@ -79,7 +81,8 @@ body {
   font-size: 0.9rem;
 }
 
-#reset-button {
+#reset-button,
+#logout-button {
   background: transparent;
   color: var(--text-dim);
   border: 1px solid var(--border);
@@ -89,7 +92,8 @@ body {
   cursor: pointer;
 }
 
-#reset-button:hover {
+#reset-button:hover,
+#logout-button:hover {
   color: var(--text);
   border-color: var(--accent-dim);
 }
@@ -268,4 +272,69 @@ body {
   .controls {
     justify-content: space-between;
   }
+}
+
+/* -- Login screen -------------------------------------------------------- */
+
+.login-screen {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 320px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-centered {
+  flex-direction: column;
+  gap: 10px;
+}
+
+.brand-centered .brand-icon {
+  width: 48px;
+  height: 48px;
+}
+
+.brand-centered .brand-name {
+  font-size: 1.3rem;
+}
+
+.login-subtitle {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.login-card input[type='password'] {
+  width: 100%;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 0.95rem;
+}
+
+.login-submit {
+  width: 100%;
+  padding: 10px 0;
+}
+
+.login-error {
+  color: var(--error);
+  font-size: 0.85rem;
+  text-align: center;
 }

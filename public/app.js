@@ -7,6 +7,13 @@
  * httpOnly cookie the server sets; this file never touches it directly.
  */
 
+const loginScreen = document.getElementById('login-screen');
+const loginForm = document.getElementById('login-form');
+const loginPassword = document.getElementById('login-password');
+const loginError = document.getElementById('login-error');
+const appShell = document.getElementById('app-shell');
+const logoutButton = document.getElementById('logout-button');
+
 const chatLog = document.getElementById('chat-log');
 const emptyState = document.getElementById('empty-state');
 const campaignSelect = document.getElementById('campaign-select');
@@ -21,7 +28,89 @@ const attachmentsBar = document.getElementById('attachments');
 const MAX_IMAGES = 5;
 let pendingImages = []; // { file, previewUrl }
 
-init();
+checkSession();
+
+// ---------------------------------------------------------------------------
+// Login gate
+// ---------------------------------------------------------------------------
+
+async function checkSession() {
+  try {
+    const res = await fetch('/api/session');
+    const data = await res.json();
+    logoutButton.hidden = !data.passwordRequired;
+    if (data.authenticated) {
+      showApp();
+    } else {
+      showLogin();
+    }
+  } catch (err) {
+    console.error('Failed to check session', err);
+    showLogin();
+  }
+}
+
+function showApp() {
+  loginScreen.hidden = true;
+  appShell.hidden = false;
+  init();
+}
+
+function showLogin(message) {
+  appShell.hidden = true;
+  loginScreen.hidden = false;
+  if (message) {
+    loginError.textContent = message;
+    loginError.hidden = false;
+  } else {
+    loginError.hidden = true;
+  }
+  loginPassword.value = '';
+  loginPassword.focus();
+}
+
+loginForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const password = loginPassword.value;
+  if (!password) return;
+
+  const submitBtn = loginForm.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    if (res.ok) {
+      loginError.hidden = true;
+      logoutButton.hidden = false;
+      showApp();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      loginError.textContent = data.error || 'Incorrect password.';
+      loginError.hidden = false;
+      loginPassword.value = '';
+      loginPassword.focus();
+    }
+  } catch (err) {
+    console.error('Login request failed', err);
+    loginError.textContent = 'Could not reach the server. Try again.';
+    loginError.hidden = false;
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+logoutButton.addEventListener('click', async () => {
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+  } catch (err) {
+    console.error('Logout request failed', err);
+  }
+  showLogin();
+});
 
 async function init() {
   await loadCampaigns();
@@ -37,6 +126,7 @@ async function init() {
 async function loadCampaigns() {
   try {
     const res = await fetch('/api/campaigns');
+    if (res.status === 401) return showLogin('Your session expired — please log in again.');
     const data = await res.json();
     campaignSelect.innerHTML = '';
     for (const campaign of data.campaigns) {
@@ -156,6 +246,12 @@ composer.addEventListener('submit', async (event) => {
     }
 
     const res = await fetch('/api/chat', { method: 'POST', body: formData });
+
+    if (res.status === 401) {
+      pendingEl.remove();
+      return showLogin('Your session expired — please log in again.');
+    }
+
     const data = await res.json();
 
     pendingEl.remove();

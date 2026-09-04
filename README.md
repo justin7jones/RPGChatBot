@@ -266,13 +266,18 @@ duplicate or keep in sync.
 - Image attachments work the same way (up to 5 per message), but are
   uploaded from the browser instead of pulled from a Discord CDN URL.
 
-**What it doesn't add:** login/authentication. The app itself trusts
-whoever can reach it. If you want the page password-gated, the simplest
-option is NGINX's `auth_basic` directive on the reverse proxy in front of
-it (see the template below) — that keeps a password out of application
-code entirely. If/when you want real per-user accounts, that's a bigger
-change (a login provider, per-user session state) worth doing as its own
-step.
+**Shared-password gate:** set `SITE_PASSWORD` in `.env` and visitors see a
+themed login screen before they can chat — one password for everyone, no
+accounts. Leave it blank to run with no password at all. This is
+application-level (checked in `web-server.js`, not by NGINX), so it works
+the same whether you're testing locally or running behind proxy02.
+`/api/campaigns`, `/api/chat`, and `/api/reset` all require a logged-in
+session once `SITE_PASSWORD` is set; the page shell itself isn't gated,
+but it's useless without those endpoints. If/when you want real per-user
+accounts instead of one shared password, that's a bigger change (a login
+provider, per-user session state) worth doing as its own step. NGINX's
+`auth_basic` (commented out in the template below) is still there as an
+optional second layer if you want defense-in-depth.
 
 ### Running it
 
