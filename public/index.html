@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RPG Chat</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">&#9876;</span>
+        <span class="brand-name">RPG Chat</span>
+      </div>
+      <div class="controls">
+        <label class="campaign-label" for="campaign-select">Campaign</label>
+        <select id="campaign-select" aria-label="Campaign"></select>
+        <button id="reset-button" type="button" title="Start a new conversation">New conversation</button>
+      </div>
+    </header>
+
+    <main id="chat-log" class="chat-log" aria-live="polite">
+      <div class="empty-state" id="empty-state">
+        Pick a campaign above, then ask a question to get started.
+      </div>
+    </main>
+
+    <form id="composer" class="composer">
+      <div id="attachments" class="attachments" hidden></div>
+      <div class="composer-row">
+        <button id="attach-button" type="button" class="icon-button" title="Attach image(s)">&#128206;</button>
+        <input id="image-input" type="file" accept="image/*" multiple hidden />
+        <textarea
+          id="message-input"
+          placeholder="Ask about a rule, a monster, your campaign lore..."
+          rows="1"
+          autocomplete="off"
+        ></textarea>
+        <button id="send-button" type="submit" class="send-button">Send</button>
+      </div>
+    </form>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

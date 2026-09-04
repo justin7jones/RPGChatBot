@@ -1,0 +1,23 @@
+{
+  "name": "rpg-chat-discord-bot",
+  "version": "2.1.0",
+  "description": "Discord bot (RPG Chat) that bridges Discord messages to the OpenAI (ChatGPT) API, with optional RAG via a vector store. Also ships a web frontend (web-server.js) serving the same assistant over HTTP, for hosting behind NGINX.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "start:web": "node web-server.js",
+    "upload-rag": "node upload-rag-data.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "discord.js": "^14.27.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "multer": "^2.0.0",
+    "openai": "^5.23.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
