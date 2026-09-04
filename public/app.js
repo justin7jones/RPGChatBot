@@ -323,11 +323,31 @@ function addUserMessage(text, imageUrls) {
 
 function addAssistantMessage(text) {
   const el = document.createElement('div');
-  el.className = 'message assistant';
-  el.textContent = text;
+  el.className = 'message assistant markdown-body';
+  el.innerHTML = renderMarkdown(text);
   chatLog.appendChild(el);
   scrollToBottom();
   return el;
+}
+
+/**
+ * Renders the model's reply as Markdown (tables, bold, lists, code, etc.
+ * -- the same formatting ChatGPT's own UI renders) instead of showing raw
+ * asterisks and pipe characters. marked.parse() turns the text into HTML;
+ * DOMPurify.sanitize() strips anything dangerous before it's inserted with
+ * innerHTML, since this text ultimately originates from an external API
+ * response rather than something we wrote ourselves.
+ */
+function renderMarkdown(text) {
+  try {
+    const html = marked.parse(text, { breaks: true, gfm: true });
+    return DOMPurify.sanitize(html);
+  } catch (err) {
+    console.error('Markdown render failed, falling back to plain text', err);
+    const fallback = document.createElement('div');
+    fallback.textContent = text;
+    return fallback.innerHTML;
+  }
 }
 
 function addErrorMessage(text) {

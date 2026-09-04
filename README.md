@@ -17,7 +17,9 @@ Originally built against AnythingLLM; now uses the OpenAI API directly.
   `index.js` and `web-server.js`, so the two front ends can't drift apart
 - `session-store.js` — in-memory per-browser-session state for the web
   frontend (conversation memory, selected campaign)
-- `public/` — the web frontend's static site (`index.html`, `app.js`, `styles.css`)
+- `public/` — the web frontend's static site (`index.html`, `app.js`,
+  `styles.css`, `assets/` for the logo/favicon, `vendor/` for the vendored
+  `marked`/`DOMPurify` libraries used to render Markdown replies)
 - `nginx/proxy02-rpgchat.conf` — reverse-proxy template for the web frontend
 - `upload-rag-data.js` — CLI to load your RAG documents into OpenAI
 - `list-rag-data.js` — CLI to browse existing vector stores and their files
@@ -265,6 +267,14 @@ duplicate or keep in sync.
   group of players; swap in Redis or SQLite later if you outgrow it.
 - Image attachments work the same way (up to 5 per message), but are
   uploaded from the browser instead of pulled from a Discord CDN URL.
+- Replies are rendered as formatted Markdown (tables, bold, lists, code,
+  blockquotes) instead of raw text -- the same formatting ChatGPT's own UI
+  renders. This is web-only; the Discord bot is untouched and still posts
+  plain text. Rendering is done client-side with `marked` (Markdown → HTML)
+  and `DOMPurify` (sanitizes that HTML before it's inserted into the page,
+  since it ultimately comes from an external API response). Both are
+  vendored locally in `public/vendor/` -- no CDN dependency, nothing
+  fetched at runtime.
 
 **Shared-password gate:** set `SITE_PASSWORD` in `.env` and visitors see a
 themed login screen before they can chat — one password for everyone, no
