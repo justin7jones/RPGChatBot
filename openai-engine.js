@@ -43,6 +43,8 @@ export const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
  * @param {string} [opts.previousResponseId] - Chain onto a prior response
  *   for multi-turn memory. Omit for a stateless, one-shot answer.
  * @param {string} [opts.instructions] - Override the default system prompt.
+ * @param {string} [opts.extraInstructions] - Extra guidance appended to the
+ *   system prompt (e.g. a campaign's saved prompt).
  * @returns {Promise<{text: string, responseId: string}>}
  */
 export async function queryOpenAI({
@@ -51,10 +53,14 @@ export async function queryOpenAI({
   vectorStoreId,
   previousResponseId,
   instructions,
+  extraInstructions,
 } = {}) {
+  const baseInstructions = instructions || OPENAI_INSTRUCTIONS;
   const request = {
     model: OPENAI_MODEL,
-    instructions: instructions || OPENAI_INSTRUCTIONS,
+    instructions: extraInstructions
+      ? `${baseInstructions}\n\nCampaign-specific instructions from the user (follow these):\n${extraInstructions}`
+      : baseInstructions,
   };
 
   if (imageUrls.length > 0) {

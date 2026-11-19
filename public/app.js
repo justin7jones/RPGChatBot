@@ -25,6 +25,15 @@ const attachButton = document.getElementById('attach-button');
 const imageInput = document.getElementById('image-input');
 const attachmentsBar = document.getElementById('attachments');
 
+const promptButton = document.getElementById('prompt-button');
+const promptDialog = document.getElementById('prompt-dialog');
+const promptForm = document.getElementById('prompt-form');
+const promptTitle = document.getElementById('prompt-title');
+const promptText = document.getElementById('prompt-text');
+const promptStatus = document.getElementById('prompt-status');
+const promptCancel = document.getElementById('prompt-cancel');
+const promptSave = document.getElementById('prompt-save');
+
 const MAX_IMAGES = 5;
 let pendingImages = []; // { file, previewUrl }
 
@@ -133,12 +142,14 @@ async function loadCampaigns() {
       const option = document.createElement('option');
       option.value = campaign.id;
       option.textContent = campaign.label;
+      option.dataset.hasPrompt = campaign.hasPrompt ? '1' : '';
       campaignSelect.appendChild(option);
     }
   } catch (err) {
     console.error('Failed to load campaigns', err);
     campaignSelect.innerHTML = '<option value="general">General</option>';
   }
+  updatePromptButton();
 }
 
 function restoreCampaignPreference() {
@@ -153,12 +164,89 @@ function restoreCampaignPreference() {
 }
 
 campaignSelect.addEventListener('change', () => {
+  updatePromptButton();
   try {
     localStorage.setItem('rpgchat_campaign', campaignSelect.value);
   } catch {
     // ignore
   }
 });
+
+// ---------------------------------------------------------------------------
+// Campaign prompt (persistent per-campaign instructions)
+// ---------------------------------------------------------------------------
+
+function selectedCampaignLabel() {
+  return campaignSelect.selectedOptions[0]?.textContent || '';
+}
+
+// The "General" campaign has no saved entry to hold a prompt.
+function updatePromptButton() {
+  promptButton.hidden = campaignSelect.value === 'general';
+  promptButton.textContent = campaignSelect.selectedOptions[0]?.dataset.hasPrompt
+    ? 'Campaign prompt ●'
+    : 'Campaign prompt';
+}
+
+function setPromptStatus(message, isError = false) {
+  promptStatus.textContent = message;
+  promptStatus.classList.toggle('error', isError);
+}
+
+promptButton.addEventListener('click', async () => {
+  promptTitle.textContent = `Campaign prompt — ${selectedCampaignLabel()}`;
+  promptText.value = '';
+  promptText.disabled = true;
+  promptSave.disabled = true;
+  setPromptStatus('Loading...');
+  promptDialog.showModal();
+
+  try {
+    const res = await fetch(`/api/campaigns/${encodeURIComponent(campaignSelect.value)}/prompt`);
+    if (res.status === 401) {
+      promptDialog.close();
+      return showLogin('Your session expired — please log in again.');
+    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not load the prompt.');
+    promptText.value = data.prompt;
+    promptText.maxLength = data.maxLength;
+    promptText.disabled = false;
+    promptSave.disabled = false;
+    setPromptStatus('');
+    promptText.focus();
+  } catch (err) {
+    setPromptStatus(err.message, true);
+  }
+});
+
+promptForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  promptSave.disabled = true;
+  setPromptStatus('Saving...');
+
+  try {
+    const res = await fetch(`/api/campaigns/${encodeURIComponent(campaignSelect.value)}/prompt`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: promptText.value }),
+    });
+    if (res.status === 401) {
+      promptDialog.close();
+      return showLogin('Your session expired — please log in again.');
+    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not save the prompt.');
+    campaignSelect.selectedOptions[0].dataset.hasPrompt = data.prompt ? '1' : '';
+    updatePromptButton();
+    promptDialog.close();
+  } catch (err) {
+    setPromptStatus(err.message, true);
+    promptSave.disabled = false;
+  }
+});
+
+promptCancel.addEventListener('click', () => promptDialog.close());
 
 // ---------------------------------------------------------------------------
 // New conversation
@@ -270,8 +358,12 @@ composer.addEventListener('submit', async (event) => {
   }
 });
 
+// On touch devices Enter should insert a newline (the Send button submits);
+// on desktop, Enter sends and Shift+Enter adds a newline.
+const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+
 messageInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && !event.shiftKey) {
+  if (event.key === 'Enter' && !event.shiftKey && !isTouchDevice) {
     event.preventDefault();
     composer.requestSubmit();
   }

@@ -18,6 +18,9 @@
  *    and returns the assistant's reply. Unlike the Discord bot, this
  *    remembers conversation history per browser session (via
  *    previous_response_id chaining) so it feels like a real chat.
+ *  - GET/PUT /api/campaigns/:id/prompt read and save a campaign's
+ *    persistent chatbot prompt (stored in guild-config.json), which is
+ *    appended to the system instructions on every chat for that campaign.
  *  - POST /api/reset starts a fresh conversation for the current session
  *    without losing the selected campaign.
  *  - Session identity is a random id in an httpOnly cookie; state itself
@@ -43,7 +46,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import multer from 'multer';
-import { listGuildEntries } from './guild-store.js';
+import { listGuildEntries, setGuildPrompt } from './guild-store.js';
 import { queryOpenAI } from './openai-engine.js';
 import { getOrCreateSession, updateSession, resetSession } from './session-store.js';
 
@@ -52,6 +55,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_PORT = Number(process.env.WEB_PORT) || 3001;
 const OPENAI_VECTOR_STORE_ID = process.env.OPENAI_VECTOR_STORE_ID;
 const SITE_PASSWORD = process.env.SITE_PASSWORD || '';
+const MAX_PROMPT_CHARS = 4000;
 const SESSION_COOKIE = 'rpgchat_session';
 
 // Cap how many images can be attached to one message, and how large each
@@ -86,8 +90,9 @@ function listCampaigns() {
   const campaigns = Object.entries(entries).map(([guildId, entry]) => ({
     id: guildId,
     label: entry.label || guildId,
+    hasPrompt: !!entry.prompt,
   }));
-  campaigns.push({ id: 'general', label: 'General' });
+  campaigns.push({ id: 'general', label: 'General', hasPrompt: false });
   return campaigns;
 }
 
@@ -96,6 +101,12 @@ function vectorStoreIdForCampaign(campaignId) {
   if (!campaignId || campaignId === 'general') return OPENAI_VECTOR_STORE_ID || undefined;
   const entries = listGuildEntries();
   return entries[campaignId]?.vectorStoreId || OPENAI_VECTOR_STORE_ID || undefined;
+}
+
+/** Returns the saved campaign prompt for a campaign id, or undefined. */
+function promptForCampaign(campaignId) {
+  if (!campaignId || campaignId === 'general') return undefined;
+  return listGuildEntries()[campaignId]?.prompt || undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +194,23 @@ app.get('/api/campaigns', requireAuth, (req, res) => {
   res.json({ campaigns: listCampaigns() });
 });
 
+app.get('/api/campaigns/:id/prompt', requireAuth, (req, res) => {
+  const entry = listGuildEntries()[req.params.id];
+  if (!entry) return res.status(404).json({ error: 'This campaign has no editable prompt.' });
+  res.json({ prompt: entry.prompt || '', maxLength: MAX_PROMPT_CHARS });
+});
+
+app.put('/api/campaigns/:id/prompt', requireAuth, (req, res) => {
+  const prompt = req.body?.prompt;
+  if (typeof prompt !== 'string') return res.status(400).json({ error: 'Missing prompt text.' });
+  if (prompt.length > MAX_PROMPT_CHARS) {
+    return res.status(400).json({ error: `Prompt is too long (max ${MAX_PROMPT_CHARS} characters).` });
+  }
+  const entry = setGuildPrompt(req.params.id, prompt);
+  if (!entry) return res.status(404).json({ error: 'This campaign has no editable prompt.' });
+  res.json({ ok: true, prompt: entry.prompt || '' });
+});
+
 app.post('/api/chat', requireAuth, upload.array('images', MAX_IMAGES_PER_MESSAGE), async (req, res) => {
   try {
     const sessionId = ensureSessionId(req, res);
@@ -216,6 +244,7 @@ app.post('/api/chat', requireAuth, upload.array('images', MAX_IMAGES_PER_MESSAGE
       prompt: effectivePrompt,
       imageUrls,
       vectorStoreId,
+      extraInstructions: promptForCampaign(campaignId),
       previousResponseId: session.previousResponseId || undefined,
     });
 

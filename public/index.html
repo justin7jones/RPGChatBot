@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>RPG Chat</title>
+  <meta name="theme-color" content="#1c1926" />
   <link rel="icon" type="image/png" href="/assets/favicon-32.png" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -36,6 +37,7 @@
       <div class="controls">
         <label class="campaign-label" for="campaign-select">Campaign</label>
         <select id="campaign-select" aria-label="Campaign"></select>
+        <button id="prompt-button" type="button" title="Edit this campaign's saved prompt">Campaign prompt</button>
         <button id="reset-button" type="button" title="Start a new conversation">New conversation</button>
         <button id="logout-button" type="button" title="Log out" hidden>Log out</button>
       </div>
@@ -62,6 +64,22 @@
       </div>
     </form>
   </div>
+
+  <dialog id="prompt-dialog" class="prompt-dialog">
+    <form id="prompt-form" method="dialog">
+      <h2 id="prompt-title">Campaign prompt</h2>
+      <p class="prompt-help">
+        Saved instructions sent with every question in this campaign, e.g. the game system
+        or which sources to trust more. Changes apply to the next message.
+      </p>
+      <textarea id="prompt-text" rows="8" placeholder="This campaign is D&amp;D 5e. Vita's notes are more authoritative than the plaud.ai summary."></textarea>
+      <div class="prompt-footer">
+        <span id="prompt-status" class="prompt-status" aria-live="polite"></span>
+        <button id="prompt-cancel" type="button">Cancel</button>
+        <button id="prompt-save" type="submit" class="send-button">Save</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="/vendor/marked.min.js"></script>
   <script src="/vendor/purify.min.js"></script>
