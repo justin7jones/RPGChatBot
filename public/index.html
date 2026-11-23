@@ -37,6 +37,7 @@
       <div class="controls">
         <label class="campaign-label" for="campaign-select">Campaign</label>
         <select id="campaign-select" aria-label="Campaign"></select>
+        <button id="files-button" type="button" title="Manage this campaign's files">Files</button>
         <button id="prompt-button" type="button" title="Edit this campaign's saved prompt">Campaign prompt</button>
         <button id="reset-button" type="button" title="Start a new conversation">New conversation</button>
         <button id="logout-button" type="button" title="Log out" hidden>Log out</button>
@@ -79,6 +80,39 @@
         <button id="prompt-save" type="submit" class="send-button">Save</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="files-dialog" class="files-dialog">
+    <div class="files-header">
+      <h2 id="files-title">Files</h2>
+      <button id="files-close" type="button" class="dialog-close" aria-label="Close">&#10005;</button>
+    </div>
+    <p class="prompt-help">
+      Documents this campaign's chatbot searches. Uploading a file with the same name replaces
+      it. Downloads are the text OpenAI extracted from each file (identical for .md/.txt/.json;
+      PDFs and Word files download as .txt).
+    </p>
+    <div class="files-toolbar">
+      <button id="files-upload" type="button" class="send-button">Upload files</button>
+      <input id="files-input" type="file" multiple hidden />
+      <a id="files-zip" class="button-link" href="#">Download all (ZIP)</a>
+      <button id="files-refresh" type="button">Refresh</button>
+      <span id="files-status" class="prompt-status" aria-live="polite"></span>
+    </div>
+    <ul id="files-list" class="files-list"></ul>
+  </dialog>
+
+  <dialog id="viewer-dialog" class="files-dialog">
+    <div class="files-header">
+      <h2 id="viewer-title">File</h2>
+      <button id="viewer-close" type="button" class="dialog-close" aria-label="Close">&#10005;</button>
+    </div>
+    <textarea id="viewer-text" spellcheck="false"></textarea>
+    <div class="prompt-footer">
+      <span id="viewer-status" class="prompt-status" aria-live="polite"></span>
+      <button id="viewer-cancel" type="button">Close</button>
+      <button id="viewer-save" type="button" class="send-button">Save changes</button>
+    </div>
   </dialog>
 
   <script src="/vendor/marked.min.js"></script>

@@ -21,6 +21,10 @@
  *  - GET/PUT /api/campaigns/:id/prompt read and save a campaign's
  *    persistent chatbot prompt (stored in guild-config.json), which is
  *    appended to the system instructions on every chat for that campaign.
+ *  - /api/campaigns/:id/files... manage the files in a campaign's vector
+ *    store (list, upload, replace/edit, delete, view, download, and
+ *    download-all as a ZIP) -- see vector-store-files.js, including why
+ *    downloads are the extracted text rather than the original bytes.
  *  - POST /api/reset starts a fresh conversation for the current session
  *    without losing the selected campaign.
  *  - Session identity is a random id in an httpOnly cookie; state itself
@@ -48,6 +52,17 @@ import cookieParser from 'cookie-parser';
 import multer from 'multer';
 import { listGuildEntries, setGuildPrompt } from './guild-store.js';
 import { queryOpenAI } from './openai-engine.js';
+import {
+  listStoreFiles,
+  assertInStore,
+  getFileText,
+  addOrReplaceFiles,
+  replaceFile,
+  removeFile,
+  buildStoreZip,
+  downloadNameFor,
+  isEditableText,
+} from './vector-store-files.js';
 import { getOrCreateSession, updateSession, resetSession } from './session-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -70,9 +85,18 @@ const upload = multer({
   limits: { fileSize: MAX_IMAGE_BYTES, files: MAX_IMAGES_PER_MESSAGE },
 });
 
+// RAG documents (rulebooks, session notes) are bigger than chat images.
+const MAX_RAG_FILE_BYTES = 50 * 1024 * 1024; // 50 MB per file
+const MAX_RAG_FILES_PER_UPLOAD = 20;
+
+const ragUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_RAG_FILE_BYTES, files: MAX_RAG_FILES_PER_UPLOAD },
+});
+
 const app = express();
 app.use(cookieParser());
-app.use(express.json());
+app.use(express.json({ limit: '5mb' })); // room for in-browser edits of large notes
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------------------------------------------------------------------------
@@ -91,8 +115,14 @@ function listCampaigns() {
     id: guildId,
     label: entry.label || guildId,
     hasPrompt: !!entry.prompt,
+    hasStore: !!entry.vectorStoreId,
   }));
-  campaigns.push({ id: 'general', label: 'General', hasPrompt: false });
+  campaigns.push({
+    id: 'general',
+    label: 'General',
+    hasPrompt: false,
+    hasStore: !!OPENAI_VECTOR_STORE_ID,
+  });
   return campaigns;
 }
 
@@ -101,6 +131,16 @@ function vectorStoreIdForCampaign(campaignId) {
   if (!campaignId || campaignId === 'general') return OPENAI_VECTOR_STORE_ID || undefined;
   const entries = listGuildEntries();
   return entries[campaignId]?.vectorStoreId || OPENAI_VECTOR_STORE_ID || undefined;
+}
+
+/**
+ * Strict variant for file management: unlike vectorStoreIdForCampaign it
+ * never falls back to the default store for an unknown campaign id, so a
+ * typo can't end up editing the wrong store.
+ */
+function managedVectorStoreId(campaignId) {
+  if (campaignId === 'general') return OPENAI_VECTOR_STORE_ID || undefined;
+  return listGuildEntries()[campaignId]?.vectorStoreId || undefined;
 }
 
 /** Returns the saved campaign prompt for a campaign id, or undefined. */
@@ -210,6 +250,124 @@ app.put('/api/campaigns/:id/prompt', requireAuth, (req, res) => {
   if (!entry) return res.status(404).json({ error: 'This campaign has no editable prompt.' });
   res.json({ ok: true, prompt: entry.prompt || '' });
 });
+
+// ---------------------------------------------------------------------------
+// Vector store file management
+// ---------------------------------------------------------------------------
+
+/** Resolves :id to a vector store (req.vectorStoreId) or answers 404. */
+function withVectorStore(req, res, next) {
+  const vectorStoreId = managedVectorStoreId(req.params.id);
+  if (!vectorStoreId) {
+    return res.status(404).json({ error: 'This campaign has no vector store.' });
+  }
+  req.vectorStoreId = vectorStoreId;
+  next();
+}
+
+/** Wraps an async route: OpenAI 404s become 404s, everything else a 500 with a reason. */
+function fileRoute(handler) {
+  return async (req, res) => {
+    try {
+      await handler(req, res);
+    } catch (err) {
+      console.error(`Error in ${req.method} ${req.path}:`, err);
+      if (err.status === 404) return res.status(404).json({ error: 'File not found in this campaign.' });
+      if (err.code === 'file_not_ready') {
+        return res.status(409).json({ error: 'This file is still being indexed. Try again in a moment.' });
+      }
+      res.status(500).json({ error: `Vector store error: ${err.message}` });
+    }
+  };
+}
+
+/** Like withVectorStore, then verifies :fileId really belongs to that store. */
+const withStoreFile = [
+  withVectorStore,
+  async (req, res, next) => {
+    try {
+      await assertInStore(req.vectorStoreId, req.params.fileId);
+      next();
+    } catch (err) {
+      if (err.status === 404) return res.status(404).json({ error: 'File not found in this campaign.' });
+      console.error(`Error checking file ${req.params.fileId}:`, err);
+      res.status(500).json({ error: `Vector store error: ${err.message}` });
+    }
+  },
+];
+
+const filesBase = '/api/campaigns/:id/files';
+
+app.get(filesBase, requireAuth, withVectorStore, fileRoute(async (req, res) => {
+  res.json({ files: await listStoreFiles(req.vectorStoreId) });
+}));
+
+app.post(
+  filesBase,
+  requireAuth,
+  withVectorStore,
+  ragUpload.array('files', MAX_RAG_FILES_PER_UPLOAD),
+  fileRoute(async (req, res) => {
+    const uploads = (req.files || []).map((f) => ({ buffer: f.buffer, filename: f.originalname }));
+    if (uploads.length === 0) return res.status(400).json({ error: 'No files were uploaded.' });
+    const result = await addOrReplaceFiles(req.vectorStoreId, uploads);
+    console.log(`[web] ${req.params.id}: uploaded ${result.added} new, ${result.replaced} replaced`);
+    res.json({ ok: true, ...result });
+  }),
+);
+
+// Registered before the :fileId routes so "download.zip" isn't read as an id.
+app.get(`${filesBase}/download.zip`, requireAuth, withVectorStore, fileRoute(async (req, res) => {
+  const label = listGuildEntries()[req.params.id]?.label || req.params.id;
+  const zip = await buildStoreZip(req.vectorStoreId);
+  res.attachment(`${label}-files.zip`);
+  res.type('application/zip').send(zip);
+}));
+
+app.get(`${filesBase}/:fileId/content`, requireAuth, ...withStoreFile, fileRoute(async (req, res) => {
+  const files = await listStoreFiles(req.vectorStoreId);
+  const file = files.find((f) => f.id === req.params.fileId);
+  res.json({
+    filename: file?.filename || req.params.fileId,
+    editable: file ? isEditableText(file.filename) : false,
+    text: await getFileText(req.vectorStoreId, req.params.fileId),
+  });
+}));
+
+app.get(`${filesBase}/:fileId/download`, requireAuth, ...withStoreFile, fileRoute(async (req, res) => {
+  const files = await listStoreFiles(req.vectorStoreId);
+  const file = files.find((f) => f.id === req.params.fileId);
+  const text = await getFileText(req.vectorStoreId, req.params.fileId);
+  res.attachment(downloadNameFor(file?.filename || req.params.fileId));
+  res.type('text/plain; charset=utf-8').send(text);
+}));
+
+// Replace a file's content, either by uploading a new file ("file" field)
+// or by sending edited text as JSON ({ text }). The filename is kept.
+app.put(
+  `${filesBase}/:fileId`,
+  requireAuth,
+  ...withStoreFile,
+  ragUpload.single('file'),
+  fileRoute(async (req, res) => {
+    let buffer;
+    if (req.file) {
+      buffer = req.file.buffer;
+    } else if (typeof req.body?.text === 'string') {
+      buffer = Buffer.from(req.body.text, 'utf8');
+    } else {
+      return res.status(400).json({ error: 'Send a replacement file or text.' });
+    }
+    const newId = await replaceFile(req.vectorStoreId, req.params.fileId, buffer);
+    res.json({ ok: true, id: newId });
+  }),
+);
+
+app.delete(`${filesBase}/:fileId`, requireAuth, ...withStoreFile, fileRoute(async (req, res) => {
+  await removeFile(req.vectorStoreId, req.params.fileId);
+  console.log(`[web] ${req.params.id}: deleted file ${req.params.fileId}`);
+  res.json({ ok: true });
+}));
 
 app.post('/api/chat', requireAuth, upload.array('images', MAX_IMAGES_PER_MESSAGE), async (req, res) => {
   try {
