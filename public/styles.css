@@ -17,6 +17,12 @@
   box-sizing: border-box;
 }
 
+/* Author display rules (.app, .login-screen) would otherwise override the
+   UA's [hidden] { display: none } and leave both screens on the page. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;
@@ -24,6 +30,8 @@ body {
 
 body {
   margin: 0;
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -33,6 +41,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
 }
 
 .topbar {
@@ -41,6 +50,9 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 20px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
@@ -81,6 +93,8 @@ body {
   font-size: 0.9rem;
 }
 
+#files-button,
+#prompt-button,
 #reset-button,
 #logout-button {
   background: transparent;
@@ -92,6 +106,8 @@ body {
   cursor: pointer;
 }
 
+#files-button:hover,
+#prompt-button:hover,
 #reset-button:hover,
 #logout-button:hover {
   color: var(--text);
@@ -100,7 +116,10 @@ body {
 
 .chat-log {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -120,7 +139,7 @@ body {
   border-radius: var(--radius);
   line-height: 1.5;
   white-space: pre-wrap;
-  word-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 .message.user {
@@ -174,6 +193,9 @@ body {
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
   padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
 }
 
 .attachments {
@@ -273,13 +295,326 @@ body {
   cursor: default;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 640px) {
   .topbar {
-    flex-direction: column;
-    align-items: stretch;
+    padding: 8px 12px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    gap: 8px;
   }
   .controls {
-    justify-content: space-between;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .campaign-label {
+    display: none;
+  }
+  #campaign-select {
+    flex: 1;
+    min-width: 0;
+  }
+  .chat-log {
+    padding: 12px;
+    gap: 10px;
+  }
+  .message {
+    max-width: 92%;
+  }
+  .message-images img {
+    max-width: 96px;
+    max-height: 96px;
+  }
+  .composer {
+    padding: 8px 10px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .send-button {
+    padding: 0 14px;
+  }
+}
+
+/* Touch devices: comfortable tap targets, and 16px form text so iOS Safari
+   doesn't zoom the page when an input is focused. */
+@media (pointer: coarse) {
+  #campaign-select,
+  #message-input,
+  .login-card input[type='password'] {
+    font-size: 16px;
+  }
+  #campaign-select,
+  #files-button,
+  #prompt-button,
+  #reset-button,
+  #logout-button {
+    min-height: 40px;
+  }
+  .icon-button,
+  .send-button {
+    height: 44px;
+  }
+  .icon-button {
+    width: 44px;
+  }
+  .attachment-chip button {
+    width: 26px;
+    height: 26px;
+    font-size: 14px;
+  }
+}
+
+/* -- Campaign prompt dialog ---------------------------------------------- */
+
+.prompt-dialog {
+  width: min(560px, calc(100vw - 24px));
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.prompt-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.prompt-dialog h2 {
+  margin: 0 0 6px;
+  font-size: 1.1rem;
+}
+
+.prompt-help {
+  margin: 0 0 12px;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+#prompt-text {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  min-height: 140px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+#prompt-text:focus {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: 1px;
+}
+
+.prompt-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.prompt-status {
+  margin-right: auto;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.prompt-status.error {
+  color: var(--error);
+}
+
+#prompt-cancel {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  height: 40px;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  #prompt-text {
+    font-size: 16px;
+  }
+  #prompt-cancel {
+    height: 44px;
+  }
+}
+
+/* -- Files dialog ------------------------------------------------------- */
+
+.files-dialog {
+  width: min(760px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.files-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.files-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.files-header h2 {
+  margin: 0 0 6px;
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
+}
+
+.dialog-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+
+.files-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.files-toolbar button:not(.send-button),
+.button-link,
+.file-actions button,
+.file-actions a,
+#viewer-cancel {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.files-toolbar button:not(.send-button):hover,
+.button-link:hover,
+.file-actions button:hover,
+.file-actions a:hover,
+#viewer-cancel:hover {
+  color: var(--text);
+  border-color: var(--accent-dim);
+}
+
+.file-actions button.danger:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  min-height: 80px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.files-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.files-list li:last-child {
+  border-bottom: none;
+}
+
+.files-list .file-empty {
+  color: var(--text-dim);
+  justify-content: center;
+}
+
+.file-info {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.file-name {
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+}
+
+.file-meta {
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.file-meta .failed {
+  color: var(--error);
+}
+
+.file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#viewer-text {
+  display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 50vh;
+  resize: none;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+#viewer-text:focus {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .files-toolbar button,
+  .button-link,
+  .file-actions button,
+  .file-actions a,
+  #viewer-cancel {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+  }
+  #viewer-text {
+    font-size: 16px;
   }
 }
 
@@ -287,6 +622,7 @@ body {
 
 .login-screen {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;

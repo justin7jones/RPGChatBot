@@ -80,3 +80,22 @@ export function setGuildVectorStoreId(guildId, vectorStoreId, label) {
 export function listGuildEntries() {
   return readConfig();
 }
+
+/**
+ * Saves (or clears, with an empty string) the persistent chatbot prompt for
+ * an existing campaign. Returns the updated entry, or undefined if the
+ * campaign isn't configured.
+ */
+export function setGuildPrompt(guildId, prompt) {
+  const config = readConfig();
+  if (!config[guildId]) return undefined;
+  const trimmed = String(prompt || '').trim();
+  const { prompt: _old, ...rest } = config[guildId];
+  config[guildId] = {
+    ...rest,
+    ...(trimmed ? { prompt: trimmed } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  writeConfig(config);
+  return config[guildId];
+}
